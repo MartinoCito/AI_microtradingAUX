@@ -1,0 +1,25 @@
+{
+    "rows": 6789606,
+    "columns": [
+        "Open",
+        "High",
+        "Low",
+        "Close",
+        "Volume"
+    ],
+    "start": "2004-06-11 07:18:00",
+    "end": "2026-01-30 23:59:00",
+    "duration_days": 7903,
+    "duplicate_timestamps": 0,
+    "missing_values": 0,
+    "zero_volume_bars": 0,
+    "negative_volume_bars": 0,
+    "detected_gaps": 214113,
+    "estimated_missing_bars": 4591716,
+    "largest_gap": "32 days 08:12:00",
+    "median_interval": "0 days 00:01:00",
+    "memory_mb": 181.3,
+    "minimum_close": 381.1000061035156,
+    "maximum_close": 5593.6298828125,
+    "average_volume": 71.91938781738281
+}

@@ -69,7 +69,7 @@ def load_market_data(
 
     if not path.is_file():
         raise ValueError(
-            f"Il percorso indicato non è un file: {path.resolve()}"
+            f"Il percorso indicato non e' un file: {path.resolve()}"
         )
 
     valid_duplicate_policies = {

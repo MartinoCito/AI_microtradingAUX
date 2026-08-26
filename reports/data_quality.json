@@ -24,41 +24,46 @@
     "timezone": null,
     "timezone_status": "unknown",
     "timestamp_represents": "unknown",
-    "volume_type": "unknown"
+    "volume_type": "unknown",
+    "price_storage_dtype": "float32",
+    "volume_storage_dtype": "float32"
   },
   "coverage": {
-    "rows": 50,
+    "rows": 67896060,
     "start": "2004-06-11T07:18:00",
-    "end": "2026-01-01T23:47:00",
-    "duration_days": 0,
+    "end": "2026-01-30T23:59:00",
+    "duration_days": 7903,
     "sorted_ascending": true
   },
   "integrity": {
     "duplicate_timestamps": 0,
-    "invalid_timestamps": 0,
     "missing_values": 0,
-    "non_numeric_ohlcv_rows": 0,
-    "non_positive_price_bars": 0,
-    "negative_volume_bars": 0,
     "zero_volume_bars": 0,
-    "ohlc_invalid_bars": 0,
-    "gap_events": 2,
-    "missing_expected_bars": 5,
-    "largest_gap_minutes": 5
+    "negative_volume_bars": 0,
+    "fractional_volume_rows": null,
+    "non_positive_price_bars": null,
+    "ohlc_invalid_bars": null
   },
-  "frequency_analysis": {
-    "expected_interval_minutes": 1,
-    "minimum_observed_interval_minutes": 1,
-    "median_observed_interval_minutes": 2,
-    "maximum_observed_interval_minutes": 5,
-    "exact_one_minute_transitions": 2,
-    "irregular_transitions": 2
+  "gap_analysis": {
+    "total_gap_events": 214113,
+    "calendar_missing_minutes": 4591716,
+    "largest_gap": "32 days 08:12:00",
+    "median_observed_interval": "1 minute",
+    "interpretation": "Calendar missing minutes include market closures, weekends, holidays, minutes without ticks and potentially missing data."
+  },
+  "statistics": {
+    "memory_mb": 181.3,
+    "minimum_close": 381.1000061035156,
+    "minimum_close_timestamp": null,
+    "maximum_close": 5593.6298828125,
+    "maximum_close_timestamp": null,
+    "average_volume": 71.91938781738281
   },
   "notes": {
     "timezone_inference": "Timezone must be derived from broker or source metadata. Do not automatically assume Europe/Helsinki.",
     "timestamp_semantics": "It is not yet known whether Date represents candle open time or candle close time.",
     "volume_interpretation": "Volume may represent tick volume rather than traded volume and must be verified from the source.",
     "missing_bar_policy": "Missing one-minute bars are detected but not interpolated or forward-filled.",
-    "pattern_comment": "The sample contains irregular one-minute spacing. Missing bars may represent missing-tick minutes, market closures or incomplete data."
+    "precision_note": "Prices are currently stored as float32. Float64 is preferred for validation, execution and PnL calculations."
   }
 }
