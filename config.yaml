@@ -1,0 +1,73 @@
+project:
+  name: microtradingAUXRL
+  seed: 42
+
+data:
+  raw_path: data/raw/XAU_1m_data.csv
+  processed_directory: data/processed
+
+  separator: ";"
+  timestamp_column: Date
+  timestamp_format: "%Y.%m.%d %H:%M"
+
+  open_column: Open
+  high_column: High
+  low_column: Low
+  close_column: Close
+  volume_column: Volume
+
+  expected_frequency: "1min"
+
+  train_ratio: 0.70
+  validation_ratio: 0.15
+  test_ratio: 0.15
+
+  duplicate_policy: "keep_last"
+  invalid_row_policy: "raise"
+
+features:
+  window_size: 60
+
+  return_windows:
+    - 1
+    - 5
+    - 15
+    - 30
+    - 60
+
+  volatility_windows:
+    - 10
+    - 30
+    - 60
+
+  moving_average_windows:
+    - 10
+    - 30
+    - 60
+
+  normalize: true
+
+environment:
+  initial_balance: 100000.0
+
+  positions:
+    - -1
+    - 0
+    - 1
+
+  commission_rate: 0.0001
+  spread_rate: 0.0002
+  slippage_rate: 0.00005
+  turnover_penalty: 0.0001
+
+  max_episode_steps: 5000
+
+agent:
+  algorithm: PPO
+  learning_rate: 0.0003
+  batch_size: 256
+  total_timesteps: 500000
+
+evaluation:
+  deterministic: true
+  risk_free_rate: 0.0
