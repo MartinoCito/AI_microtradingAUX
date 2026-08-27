@@ -43,7 +43,7 @@ def load_config() -> dict:
 
     if not isinstance(config, dict):
         raise ValueError(
-            "Il file config.yaml è vuoto oppure non è valido."
+            "Il file config.yaml e' vuoto oppure non e' valido."
         )
 
     if "data" not in config:
