@@ -167,7 +167,6 @@ def load_market_data(
     )
 
     dataframe = dataframe.set_index(timestamp_column)
-
     dataframe.index.name = "Date"
 
     # Riduce il consumo di memoria.
@@ -457,16 +456,233 @@ def get_dataset_summary(
     return summary
 
 
-def print_dataset_summary(
-    summary: dict[str, Any],
-) -> None:
+def get_gaps_table(
+    dataframe: pd.DataFrame,
+    expected_frequency: str = "1min",
+) -> pd.DataFrame:
     """
-    Stampa il riepilogo del dataset in modo leggibile.
+    Costruisce una tabella con i gap temporali rilevati.
+
+    Ogni riga rappresenta un intervallo in cui mancano una o più barre
+    rispetto alla frequenza attesa (es. 1 minuto).
     """
-    print("\nRiepilogo del dataset")
-    print("=" * 50)
+    if dataframe.empty:
+        raise ValueError(
+            "Impossibile analizzare i gap di un dataset vuoto."
+        )
 
-    for key, value in summary.items():
-        print(f"{key}: {value}")
+    if not isinstance(dataframe.index, pd.DatetimeIndex):
+        raise TypeError(
+            "L'indice del DataFrame deve essere un DatetimeIndex."
+        )
 
-    print("=" * 50)
+    expected_delta = pd.to_timedelta(expected_frequency)
+
+    # Differenze tra timestamp consecutivi.
+    time_differences = (
+        dataframe.index
+        .to_series()
+        .diff()
+    )
+
+    gap_mask = time_differences > expected_delta
+    gaps = time_differences.loc[gap_mask]
+
+    if gaps.empty:
+        return pd.DataFrame(
+            columns=[
+                "gap_start",
+                "gap_end",
+                "gap_duration",
+                "missing_bars",
+            ]
+        )
+
+    rows: list[dict[str, Any]] = []
+
+    # Per ogni gap individuiamo inizio, fine e barre mancanti.
+    for gap_timestamp, gap_delta in gaps.items():
+        # gap_timestamp è il timestamp di arrivo del gap.
+        # Il timestamp precedente è l'ultima barra prima del vuoto.
+        previous_timestamp = dataframe.index[
+            dataframe.index.get_loc(gap_timestamp) - 1
+        ]
+
+        missing_bars = int(
+            (gap_delta / expected_delta) - 1
+        )
+
+        rows.append(
+            {
+                "gap_start": previous_timestamp,
+                "gap_end": gap_timestamp,
+                "gap_duration": gap_delta,
+                "missing_bars": missing_bars,
+            }
+        )
+
+    gaps_table = pd.DataFrame(rows)
+
+    return gaps_table
+
+
+def analyze_calendar(
+    dataframe: pd.DataFrame,
+    long_closure_threshold: str = "2D",
+) -> dict[str, Any]:
+    """
+    Analizza il calendario del dataset per individuare weekend
+    e chiusure prolungate (es. weekend FX, festività).
+
+    Non assegna automaticamente il fuso orario: fornisce solo
+    indicatori diagnostici.
+    """
+    if dataframe.empty:
+        raise ValueError(
+            "Impossibile analizzare il calendario di un dataset vuoto."
+        )
+
+    if not isinstance(dataframe.index, pd.DatetimeIndex):
+        raise TypeError(
+            "L'indice del DataFrame deve essere un DatetimeIndex."
+        )
+
+    # Conteggio barre per giorno della settimana (0=lunedì, 6=domenica).
+    day_counts = (
+        dataframe.index.dayofweek
+        .value_counts()
+        .sort_index()
+    )
+
+    weekend_bars = int(
+        day_counts.get(5, 0) + day_counts.get(6, 0)
+    )
+
+    # Numero di settimane con almeno una barra.
+    weeks = dataframe.index.to_period("W")
+    weeks_with_data = int(
+        weeks.value_counts().shape[0]
+    )
+
+    # Giorni di trading distinti per settimana (media).
+    trading_days_per_week: list[int] = []
+    for week, group in dataframe.groupby(weeks):
+        unique_days = group.index.dayofweek.unique()
+        trading_days_per_week.append(len(unique_days))
+
+    average_trading_days_per_week = float(
+        pd.Series(trading_days_per_week).mean()
+    )
+
+    # Chiusure prolungate: gap più lunghi di una soglia (es. 2 giorni).
+    threshold = pd.to_timedelta(long_closure_threshold)
+    expected_delta = pd.to_timedelta("1min")
+
+    time_differences = (
+        dataframe.index
+        .to_series()
+        .diff()
+    )
+    long_gap_mask = time_differences > threshold
+    long_gaps = time_differences.loc[long_gap_mask]
+
+    long_closures: list[dict[str, Any]] = []
+
+    for gap_timestamp, gap_delta in long_gaps.items():
+        previous_timestamp = dataframe.index[
+            dataframe.index.get_loc(gap_timestamp) - 1
+        ]
+
+        missing_bars = int(
+            (gap_delta / expected_delta) - 1
+        )
+
+        long_closures.append(
+            {
+                "start": previous_timestamp,
+                "end": gap_timestamp,
+                "duration": gap_delta,
+                "estimated_missing_bars": missing_bars,
+            }
+        )
+
+    calendar_summary: dict[str, Any] = {
+        "bars_per_day_of_week": {
+            int(day): int(count)
+            for day, count in day_counts.items()
+        },
+        "weekend_bars": weekend_bars,
+        "weeks_with_data": weeks_with_data,
+        "average_trading_days_per_week": average_trading_days_per_week,
+        "long_closures": long_closures,
+        # Nessun fuso orario assegnato automaticamente.
+        "timezone": None,
+        "timezone_note": (
+            "Il fuso orario del broker deve essere determinato da "
+            "metadati esterni (es. documentazione del broker, "
+            "label EET/EEST, impostazioni MT4/MT5) e NON "
+            "assunto automaticamente."
+        ),
+    }
+
+    return calendar_summary
+
+
+def build_data_quality_report(
+    dataframe: pd.DataFrame,
+    expected_frequency: str = "1min",
+    separator: str = ";",
+    timestamp_column: str = "Date",
+    timestamp_format: str = "%Y.%m.%d %H:%M",
+) -> dict[str, Any]:
+    """
+    Costruisce un dizionario compatibile con reports/data_quality.json
+    che riassume qualità, calendario e volume del dataset M1.
+    """
+    summary = get_dataset_summary(
+        dataframe=dataframe,
+        expected_frequency=expected_frequency,
+    )
+
+    calendar = analyze_calendar(dataframe)
+
+    report: dict[str, Any] = {
+        "schema": {
+            "columns": list(dataframe.columns),
+            "separator": separator,
+            "timestamp_column": timestamp_column,
+            "timestamp_format": timestamp_format,
+            # Nessuna timezone assegnata in automatico.
+            "timezone": calendar["timezone"],
+        },
+        "integrity": {
+            "rows": summary["rows"],
+            "duplicate_timestamps": summary["duplicate_timestamps"],
+            "missing_values": summary["missing_values"],
+            "detected_gaps": summary["detected_gaps"],
+            "estimated_missing_bars": summary["estimated_missing_bars"],
+            "largest_gap": summary["largest_gap"],
+            "median_interval": summary["median_interval"],
+        },
+        "volume": {
+            "zero_volume_bars": summary["zero_volume_bars"],
+            "negative_volume_bars": summary["negative_volume_bars"],
+            "average_volume": summary["average_volume"],
+        },
+        "price": {
+            "minimum_close": summary["minimum_close"],
+            "maximum_close": summary["maximum_close"],
+        },
+        "calendar": calendar,
+        "notes": {
+            "timezone_note": calendar["timezone_note"],
+            "frequency_assumption": (
+                "Analisi basata su expected_frequency="
+                f"{expected_frequency}. I minuti senza "
+                "transazioni possono generare gap intraday "
+                "legittimi su timeframe M1."
+            ),
+        },
+    }
+
+    return report
