@@ -71,3 +71,9 @@ agent:
 evaluation:
   deterministic: true
   risk_free_rate: 0.0
+
+resampling:
+  target_rule: "15min"
+  source_bar_duration: "1min"
+  min_coverage_ratio: 1.0
+  broker_timestamp_convention: "open"
