@@ -52,4 +52,4 @@ def chronological_date_split(
             "Validation e test si sovrappongono."
         )
 
-    return train, validation, tests
+    return train, validation, test
