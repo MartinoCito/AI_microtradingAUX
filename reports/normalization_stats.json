@@ -1,0 +1,47 @@
+{
+    "normalized_columns": [
+        "return_1",
+        "return_4",
+        "return_16",
+        "atr_over_close",
+        "close_ema20_over_atr",
+        "close_ema50_over_atr",
+        "ema20_ema50_over_atr",
+        "candle_body_over_range",
+        "upper_wick_over_range",
+        "lower_wick_over_range",
+        "relative_volume"
+    ],
+    "excluded_columns": [
+        "hour_sin",
+        "hour_cos",
+        "current_position",
+        "unrealized_return"
+    ],
+    "means": {
+        "return_1": 2.655868285639477e-07,
+        "return_4": 6.890927140826021e-07,
+        "return_16": 3.170911429024388e-06,
+        "atr_over_close": 0.00032366118547227663,
+        "close_ema20_over_atr": 0.015248763752554035,
+        "close_ema50_over_atr": 0.051357757160350195,
+        "ema20_ema50_over_atr": 0.03610899340779616,
+        "candle_body_over_range": -0.005876072912263351,
+        "upper_wick_over_range": 0.22410595618221013,
+        "lower_wick_over_range": 0.22419532846827128,
+        "relative_volume": 1.048009581813628
+    },
+    "stds": {
+        "return_1": 0.0003341747265810749,
+        "return_4": 0.0006543678664468387,
+        "return_16": 0.0012927466098537946,
+        "atr_over_close": 0.00023004633102198237,
+        "close_ema20_over_atr": 1.5464396945192231,
+        "close_ema50_over_atr": 2.4362658917632265,
+        "ema20_ema50_over_atr": 1.2498175431675829,
+        "candle_body_over_range": 0.6389716152322087,
+        "upper_wick_over_range": 0.25651341129909433,
+        "lower_wick_over_range": 0.2564609519686827,
+        "relative_volume": 0.537818855155698
+    }
+}

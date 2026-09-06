@@ -1,0 +1,22 @@
+{
+    "threshold": 0.95,
+    "kept_columns": [
+        "return_1",
+        "return_4",
+        "return_16",
+        "atr_over_close",
+        "close_ema20_over_atr",
+        "close_ema50_over_atr",
+        "ema20_ema50_over_atr",
+        "candle_body_over_range",
+        "upper_wick_over_range",
+        "lower_wick_over_range",
+        "relative_volume",
+        "hour_sin",
+        "hour_cos",
+        "current_position",
+        "unrealized_return"
+    ],
+    "dropped_columns": [],
+    "drop_reasons": []
+}
