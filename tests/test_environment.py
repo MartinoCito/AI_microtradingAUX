@@ -55,7 +55,7 @@ def make_env(mode="train", max_episode_steps=20, random_start=None):
 
 def test_action_and_observation_spaces():
     env = make_env()
-    assert env.action_space == gym.spaces.Discrete(3)
+    assert env.action_space.n == 3
     assert env.observation_space.shape == (len(MARKET_FEATURE_COLUMNS) + 2,)
 
     obs, _ = env.reset(seed=42)
