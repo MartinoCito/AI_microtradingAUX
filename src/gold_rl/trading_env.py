@@ -8,15 +8,14 @@ import numpy as np
 import pandas as pd
 from gymnasium import spaces
 
+from gold_rl.data.features import MARKET_FEATURE_COLUMNS
 from gold_rl.execution import ExecutionCostsConfig, execute_order
 from gold_rl.portfolio import PortfolioState, initialize_portfolio, update_portfolio
-from gold_rl.data.features import MARKET_FEATURE_COLUMNS
 
 
-ACTION_TO_POSITION = {-1: -1, 0: 0, 1: 1}
+ACTION_TO_POSITION = {0: -1, 1: 0, 2: 1}
 POSITION_TO_ACTION = {-1: 0, 0: 1, 1: 2}
 DEFAULT_MARKET_FEATURES = tuple(MARKET_FEATURE_COLUMNS)
-STATE_FEATURES = ("current_position", "unrealized_return")
 
 
 @dataclass(frozen=True)
@@ -26,21 +25,7 @@ class EpisodeBounds:
 
 
 class TradingEnv(gym.Env):
-    """Gymnasium environment for causal M15 trading.
-
-    Observation at index t contains only the M15 features available at t and
-    the portfolio state marked at t. The action selected from that observation
-    is executed at t+1, preventing the agent from trading on the close used to
-    build its observation.
-
-    Actions:
-        0 -> short (-1)
-        1 -> flat (0)
-        2 -> long (+1)
-
-    Training can sample a random chronological episode start. Validation/test
-    keep a deterministic chronological segment.
-    """
+    """Causal M15 trading environment using the Phase 4 execution engine."""
 
     metadata = {"render_modes": []}
 
@@ -60,12 +45,8 @@ class TradingEnv(gym.Env):
 
         if mode not in {"train", "validation", "test"}:
             raise ValueError("mode deve essere 'train', 'validation' o 'test'.")
-
-        if len(features) != len(mid_prices):
-            raise ValueError("features e mid_prices devono avere la stessa lunghezza.")
-        if len(features) < 2:
-            raise ValueError("Servono almeno due barre per un episodio.")
-
+        if len(features) != len(mid_prices) or len(features) < 2:
+            raise ValueError("features e mid_prices devono avere stessa lunghezza e almeno 2 righe.")
         if not isinstance(features.index, pd.DatetimeIndex):
             raise TypeError("features deve avere un DatetimeIndex.")
         if not features.index.is_monotonic_increasing:
@@ -79,18 +60,17 @@ class TradingEnv(gym.Env):
             raise ValueError(f"Feature M15 mancanti: {missing}")
 
         market = features.loc[:, columns].astype("float64")
+        prices = mid_prices.astype("float64")
         if not np.isfinite(market.to_numpy()).all():
             raise ValueError("Le feature M15 contengono NaN o valori infiniti.")
-
-        prices = mid_prices.astype("float64")
         if not np.isfinite(prices.to_numpy()).all() or (prices <= 0).any():
             raise ValueError("mid_prices deve contenere prezzi positivi e finiti.")
-
         if max_episode_steps is not None and max_episode_steps < 1:
             raise ValueError("max_episode_steps deve essere >= 1 oppure None.")
-
         if turnover_reward_weight < 0:
             raise ValueError("turnover_reward_weight deve essere >= 0.")
+        if random_start and mode != "train":
+            raise ValueError("random_start=True è consentito solo in training.")
 
         self.mode = mode
         self.features = market
@@ -101,9 +81,6 @@ class TradingEnv(gym.Env):
         self.max_episode_steps = max_episode_steps
         self.turnover_reward_weight = float(turnover_reward_weight)
         self.random_start = (mode == "train") if random_start is None else bool(random_start)
-
-        if self.random_start and self.mode != "train":
-            raise ValueError("random_start=True è consentito solo in training.")
 
         self.action_space = spaces.Discrete(3)
         self.observation_space = spaces.Box(
@@ -117,27 +94,26 @@ class TradingEnv(gym.Env):
         self._steps = 0
         self._portfolio: PortfolioState | None = None
         self._terminated = False
+        self._episode_time_limited = False
 
     @staticmethod
     def action_to_position(action: int) -> int:
-        if action not in (0, 1, 2):
+        action = int(action)
+        if action not in ACTION_TO_POSITION:
             raise ValueError(f"Azione non valida: {action}")
-        return action - 1
+        return ACTION_TO_POSITION[action]
 
     def _sample_episode(self) -> EpisodeBounds:
-        data_end = len(self.features) - 1  # last usable observation; action needs t+1
-
+        data_end = len(self.features) - 1
         if self.random_start:
             if self.max_episode_steps is None:
                 start = int(self.np_random.integers(0, data_end))
                 return EpisodeBounds(start=start, end=data_end)
-
             latest_start = data_end - self.max_episode_steps
             if latest_start < 0:
                 raise ValueError("Dataset troppo corto per max_episode_steps.")
             start = int(self.np_random.integers(0, latest_start + 1))
-            end = min(start + self.max_episode_steps, data_end)
-            return EpisodeBounds(start=start, end=end)
+            return EpisodeBounds(start=start, end=start + self.max_episode_steps)
 
         start = 0
         end = data_end
@@ -151,35 +127,18 @@ class TradingEnv(gym.Env):
 
         market = self.features.iloc[self._index].to_numpy(dtype=np.float32)
         equity = float(self._portfolio.equity)
-        unrealized_return = (
-            float(self._portfolio.unrealized_pnl / equity)
-            if equity != 0.0
-            else 0.0
-        )
-
+        unrealized_return = float(self._portfolio.unrealized_pnl / equity) if equity else 0.0
         observation = np.concatenate(
-            [
-                market,
-                np.asarray(
-                    [float(self._portfolio.position), unrealized_return],
-                    dtype=np.float32,
-                ),
-            ]
+            [market, np.asarray([self._portfolio.position, unrealized_return], dtype=np.float32)]
         ).astype(np.float32)
 
         if not np.isfinite(observation).all():
             raise FloatingPointError("Observation non-finita.")
         return observation
 
-    def _get_info(
-        self,
-        execution=None,
-        previous_equity: float | None = None,
-        reward: float | None = None,
-    ) -> dict:
+    def _get_info(self, execution=None, previous_equity: float | None = None, reward: float | None = None) -> dict:
         if self._index is None or self._portfolio is None:
             return {}
-
         info = {
             "timestamp": self.features.index[self._index],
             "step": int(self._steps),
@@ -190,61 +149,43 @@ class TradingEnv(gym.Env):
             "cumulative_costs": float(self._portfolio.cumulative_costs),
             "cumulative_turnover": float(self._portfolio.cumulative_turnover),
         }
-
         if execution is not None:
-            info.update(
-                {
-                    "trade_size": int(execution.trade_size),
-                    "turnover": float(execution.turnover),
-                    "total_cost": float(execution.total_cost),
-                    "turnover_cost": float(execution.turnover_cost),
-                }
-            )
-
+            info.update({
+                "trade_size": int(execution.trade_size),
+                "turnover": float(execution.turnover),
+                "total_cost": float(execution.total_cost),
+                "turnover_cost": float(execution.turnover_cost),
+            })
         if previous_equity is not None:
-            info["net_return"] = float(
-                self._portfolio.equity / previous_equity - 1.0
-            )
-
+            info["net_return"] = float(self._portfolio.equity / previous_equity - 1.0)
         if reward is not None:
             info["reward"] = float(reward)
-
         return info
 
-    def reset(
-        self,
-        *,
-        seed: int | None = None,
-        options: dict | None = None,
-    ) -> tuple[np.ndarray, dict]:
+    def reset(self, *, seed: int | None = None, options: dict | None = None):
         super().reset(seed=seed)
-
         if options:
             unsupported = set(options) - {"start_index", "end_index"}
             if unsupported:
                 raise ValueError(f"Opzioni non supportate: {sorted(unsupported)}")
 
         episode = self._sample_episode()
-
         if options and "start_index" in options:
             start = int(options["start_index"])
-            if start < 0 or start >= len(self.features) - 1:
-                raise ValueError("start_index fuori dai limiti.")
-            end = episode.end
-            if "end_index" in options:
-                end = int(options["end_index"])
-            if end <= start or end >= len(self.features):
-                raise ValueError("end_index non valido.")
+            end = int(options.get("end_index", episode.end))
+            if start < 0 or start >= len(self.features) - 1 or end <= start or end >= len(self.features):
+                raise ValueError("start_index/end_index non validi.")
             episode = EpisodeBounds(start=start, end=end)
 
+        data_end = len(self.features) - 1
         self._episode = episode
+        self._episode_time_limited = episode.end < data_end
         self._index = episode.start
         self._steps = 0
         self._portfolio = initialize_portfolio(self.initial_balance)
         self._terminated = False
 
-        observation = self._get_observation()
-        return observation, self._get_info()
+        return self._get_observation(), self._get_info()
 
     def step(self, action: int):
         if self._episode is None or self._index is None or self._portfolio is None:
@@ -252,9 +193,7 @@ class TradingEnv(gym.Env):
         if self._terminated:
             raise RuntimeError("L'episodio è terminato: chiamare reset().")
 
-        action = int(action)
         target_position = self.action_to_position(action)
-
         next_index = self._index + 1
         if next_index > self._episode.end:
             raise RuntimeError("Tentativo di accesso oltre la fine dell'episodio.")
@@ -267,7 +206,6 @@ class TradingEnv(gym.Env):
             target_position=target_position,
             config=self.execution_config,
         )
-
         self._portfolio = update_portfolio(
             previous_state=self._portfolio,
             execution=execution,
@@ -278,28 +216,21 @@ class TradingEnv(gym.Env):
             raise FloatingPointError("Equity precedente non valida.")
 
         net_return = float(self._portfolio.equity / previous_equity - 1.0)
-
-        # The execution engine already deducts all transaction costs. The
-        # optional reward weight can additionally penalize turnover as reward
-        # shaping without changing portfolio accounting.
         reward = float(net_return - self.turnover_reward_weight * execution.turnover)
-
         if not np.isfinite(reward) or not np.isfinite(self._portfolio.equity):
             raise FloatingPointError("Reward/equity non finita.")
 
         self._index = next_index
         self._steps += 1
 
-        terminated = self._index >= self._episode.end
-        truncated = False
+        reached_end = self._index >= self._episode.end
+        reached_data_end = self._index >= len(self.features) - 1
+        terminated = bool(reached_end and reached_data_end)
+        truncated = bool(reached_end and self._episode_time_limited and not terminated)
         self._terminated = terminated or truncated
 
         observation = self._get_observation()
-        info = self._get_info(
-            execution=execution,
-            previous_equity=previous_equity,
-            reward=reward,
-        )
+        info = self._get_info(execution=execution, previous_equity=previous_equity, reward=reward)
         return observation, reward, terminated, truncated, info
 
     def render(self):
