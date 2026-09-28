@@ -33,9 +33,29 @@ def load_test_data(config: dict) -> pd.DataFrame:
     for path in candidates:
         if path.exists():
             frame = pd.read_parquet(path).sort_index()
-            if frame.empty or "Close" not in frame.columns:
-                raise ValueError(f"Dataset non valido per la Fase 5: {path}")
-            return frame
+            # Tollerante a differenze di maiuscole/minuscole e timestamp salvato come colonna.
+            column_map = {str(column).strip().lower(): column for column in frame.columns}
+            rename_map = {}
+            for canonical in ("Open", "High", "Low", "Close", "Volume"):
+                original = column_map.get(canonical.lower())
+                if original is not None and original != canonical:
+                    rename_map[original] = canonical
+            frame = frame.rename(columns=rename_map)
+            if "Close" not in frame.columns:
+                raise ValueError(
+                    f"Dataset non valido per la Fase 5: {path}. "
+                    f"Colonne trovate: {list(frame.columns)}"
+                )
+            if not isinstance(frame.index, pd.DatetimeIndex):
+                for timestamp_column in ("Date", "date", "Timestamp", "timestamp", "time"):
+                    if timestamp_column in frame.columns:
+                        frame[timestamp_column] = pd.to_datetime(frame[timestamp_column], errors="coerce")
+                        frame = frame.dropna(subset=[timestamp_column]).set_index(timestamp_column)
+                        break
+            frame = frame.sort_index()
+            if frame.empty:
+                raise ValueError(f"Dataset vuoto per la Fase 5: {path}")
+            return framerame
     raise FileNotFoundError("Nessun dataset processed disponibile per la Fase 5.")
 
 
