@@ -67,6 +67,6 @@ def test_metrics_are_well_defined() -> None:
     equity = pd.Series([100.0, 101.0, 99.0, 102.0])
     positions = pd.Series([0, 1, 1, 0])
     metrics = calculate_metrics(equity, positions, 100.0)
-    assert metrics["total_return"] == 0.02
+    assert np.isclose(metrics["total_return"], 0.02)
     assert metrics["max_drawdown"] < 0.0
     assert metrics["trades"] == 2
