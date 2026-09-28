@@ -4,3 +4,4 @@ PyYAML>=6.0
 pytest>=8.0
 pyarrow>=15.0
 fastparquet
+gymnasium>=1.0,<2.0
