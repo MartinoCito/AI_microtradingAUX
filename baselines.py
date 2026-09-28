@@ -24,40 +24,51 @@ def load_config() -> dict:
 
 
 def load_test_data(config: dict) -> pd.DataFrame:
-    processed = PROJECT_ROOT / config["data"]["processed_directory"]
-    candidates = (
-        processed / "xauusd_m1_test.parquet",
-        processed / "xauusd_m1.parquet",
-        processed / "xauusd_m15.parquet",
-    )
-    for path in candidates:
-        if path.exists():
-            frame = pd.read_parquet(path).sort_index()
-            # Tollerante a differenze di maiuscole/minuscole e timestamp salvato come colonna.
-            column_map = {str(column).strip().lower(): column for column in frame.columns}
-            rename_map = {}
-            for canonical in ("Open", "High", "Low", "Close", "Volume"):
-                original = column_map.get(canonical.lower())
-                if original is not None and original != canonical:
-                    rename_map[original] = canonical
-            frame = frame.rename(columns=rename_map)
-            if "Close" not in frame.columns:
-                raise ValueError(
-                    f"Dataset non valido per la Fase 5: {path}. "
-                    f"Colonne trovate: {list(frame.columns)}"
-                )
-            if not isinstance(frame.index, pd.DatetimeIndex):
-                for timestamp_column in ("Date", "date", "Timestamp", "timestamp", "time"):
-                    if timestamp_column in frame.columns:
-                        frame[timestamp_column] = pd.to_datetime(frame[timestamp_column], errors="coerce")
-                        frame = frame.dropna(subset=[timestamp_column]).set_index(timestamp_column)
-                        break
-            frame = frame.sort_index()
-            if frame.empty:
-                raise ValueError(f"Dataset vuoto per la Fase 5: {path}")
-            return framerame
-    raise FileNotFoundError("Nessun dataset processed disponibile per la Fase 5.")
+    """
+    Carica il dataset OHLCV M1 sorgente e ricava esclusivamente il test set
+    con lo stesso split cronologico usato dalla Fase 3.
 
+    Il parquet xauusd_m1_test.parquet contiene solo feature normalizzate
+    (non OHLCV), quindi non e' una sorgente valida per baseline che devono
+    calcolare momentum/EMA sul prezzo.
+    """
+    data_config = config["data"]
+    raw_path = PROJECT_ROOT / data_config["raw_path"]
+
+    from gold_rl.data.loader import load_market_data
+    from gold_rl.data.splitter import chronological_date_split
+
+    data = load_market_data(
+        file_path=raw_path,
+        separator=data_config["separator"],
+        timestamp_column=data_config["timestamp_column"],
+        timestamp_format=data_config["timestamp_format"],
+        duplicate_policy=data_config["duplicate_policy"],
+    )
+
+    train_ratio = float(data_config["train_ratio"])
+    validation_ratio = float(data_config["validation_ratio"])
+    if not 0.0 < train_ratio < 1.0:
+        raise ValueError("train_ratio deve essere compreso tra 0 e 1.")
+    if not 0.0 <= validation_ratio < 1.0:
+        raise ValueError("validation_ratio deve essere compreso tra 0 e 1.")
+    if train_ratio + validation_ratio >= 1.0:
+        raise ValueError("train_ratio + validation_ratio deve essere < 1.")
+
+    train_end_index = int(len(data) * train_ratio) - 1
+    validation_end_index = int(len(data) * (train_ratio + validation_ratio)) - 1
+    if train_end_index < 0 or validation_end_index <= train_end_index:
+        raise ValueError("Dataset insufficiente per lo split train/validation/test.")
+
+    train_end = str(data.index[train_end_index])
+    validation_end = str(data.index[validation_end_index])
+
+    _, _, test = chronological_date_split(
+        dataframe=data,
+        train_end=train_end,
+        validation_end=validation_end,
+    )
+    return test
 
 def build_target_positions(data: pd.DataFrame, seed: int = 42) -> dict[str, pd.Series]:
     close = data["Close"].astype(float)
