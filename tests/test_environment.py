@@ -110,7 +110,8 @@ def test_step_executes_at_next_bar_without_out_of_index():
             assert not terminated
             assert not truncated
         else:
-            assert terminated
+            assert not terminated
+            assert truncated
 
     try:
         env.step(2)
