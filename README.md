@@ -288,3 +288,53 @@ La Fase 1 del progetto `AI_microtradingAUX` è stata implementata in modo da gar
 - Nessuna barra OHLC impossibile nel dataset preparato.
 - Documentazione completa di gap, volume, struttura temporale e comportamento del calendario (inclusi weekend e chiusure prolungate).
 - Flessibilità nel trattamento del fuso orario, che viene analizzato ma non imposto senza informazioni esterne.
+
+## Fase 7 — Addestramento PPO preliminare
+
+La Fase 7 è integrata nella pipeline esistente e non usa una configurazione separata.
+
+### Componenti
+
+- `scripts/train_ppo.py`: costruisce gli input direttamente dal prodotto M15 della Fase 2, usa le feature causali della Fase 3, normalizza con statistiche fit **solo sul train**, riusa `TradingEnv` e l'execution engine delle Fasi 4–6, quindi avvia PPO su un sottoinsieme cronologico del train.
+- `src/gold_rl/rl/callbacks.py`: checkpoint periodici e diagnostica di reward/action.
+- `config.yaml`: iperparametri PPO, seed, frequenza checkpoint/evaluation e soglia di degenerazione.
+- `requirements.txt`: dipendenze PPO aggiunte alle dipendenze esistenti.
+- `models/prototype/`, `logs/prototype/`, `reports/ppo_prototype/`: destinazioni degli artefatti generati localmente; i risultati non vengono versionati.
+
+### Esecuzione locale
+
+Dopo aver costruito il prodotto M15 definitivo con la pipeline dati:
+
+```bash
+pip install -r requirements.txt
+python scripts/train_ppo.py
+```
+
+Per usare un percorso M15 diverso:
+
+```bash
+python scripts/train_ppo.py --m15-path /percorso/al/tuo/xauusd_m15.parquet
+```
+
+Il training usa i seed configurati in `config.yaml` e produce un run separato per seed.
+
+### Monitoraggio
+
+Stable-Baselines3 scrive nei log CSV/TensorBoard le metriche PPO, incluse:
+
+- `train/policy_gradient_loss`
+- `train/value_loss`
+- `train/entropy_loss`
+- `rollout/ep_rew_mean`
+- `eval/mean_reward`
+
+La diagnostica aggiuntiva salva la distribuzione delle azioni short/flat/long e i reward degli episodi di training. Al termine viene eseguita anche una valutazione deterministica sul segmento validation.
+
+La soglia di degenerazione preliminare è il **99%** sulla singola azione dominante. Il test set resta escluso dalla Fase 7.
+
+Per TensorBoard:
+
+```bash
+tensorboard --logdir logs/prototype
+```
+
