@@ -5,6 +5,7 @@ project:
 data:
   raw_path: data/raw/XAU_1m_data.csv
   processed_directory: data/processed
+  m15_path: data/processed/xauusd_m15.parquet
 
   separator: ";"
   timestamp_column: Date
@@ -66,7 +67,28 @@ agent:
   algorithm: PPO
   learning_rate: 0.0003
   batch_size: 256
-  total_timesteps: 500000
+  n_steps: 2048
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.20
+  ent_coef: 0.0
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  policy_hidden_layers:
+    - 128
+    - 128
+  total_timesteps: 250000
+  train_fraction: 0.25
+  seeds:
+    - 42
+    - 43
+    - 44
+  eval_freq: 25000
+  checkpoint_freq: 25000
+  device: auto
+  deterministic_validation: true
+  degeneracy_threshold: 0.99
 
 evaluation:
   deterministic: true
