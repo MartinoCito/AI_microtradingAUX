@@ -86,9 +86,15 @@ agent:
     - 44
   eval_freq: 25000
   checkpoint_freq: 25000
-  device: auto
+  device: cpu
   deterministic_validation: true
   degeneracy_threshold: 0.99
+  torch_threads: 1
+  comparison_steps: 5000
+  acceptance:
+    # Fixed before the corrected experiment; prototype stability, not profit.
+    max_mean_window_return_range: 0.10
+    max_action_share_range: 0.20
 
 evaluation:
   deterministic: true

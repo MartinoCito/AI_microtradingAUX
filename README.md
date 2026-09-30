@@ -291,50 +291,41 @@ La Fase 1 del progetto `AI_microtradingAUX` è stata implementata in modo da gar
 
 ## Fase 7 — Addestramento PPO preliminare
 
-La Fase 7 è integrata nella pipeline esistente e non usa una configurazione separata.
-
-### Componenti
-
-- `scripts/train_ppo.py`: costruisce gli input direttamente dal prodotto M15 della Fase 2, usa le feature causali della Fase 3, normalizza con statistiche fit **solo sul train**, riusa `TradingEnv` e l'execution engine delle Fasi 4–6, quindi avvia PPO su un sottoinsieme cronologico del train.
-- `src/gold_rl/rl/callbacks.py`: checkpoint periodici e diagnostica di reward/action.
-- `config.yaml`: iperparametri PPO, seed, frequenza checkpoint/evaluation e soglia di degenerazione.
-- `requirements.txt`: dipendenze PPO aggiunte alle dipendenze esistenti.
-- `models/prototype/`, `logs/prototype/`, `reports/ppo_prototype/`: destinazioni degli artefatti generati localmente; i risultati non vengono versionati.
-
-### Esecuzione locale
-
-Dopo aver costruito il prodotto M15 definitivo con la pipeline dati:
+La preparazione parte dal prodotto M15 della Fase 2, costruisce feature causali e seleziona il sottoinsieme cronologico **prima** di stimare la normalizzazione. Lo scaler non utilizza né il resto del training né validation/test.
 
 ```bash
-pip install -r requirements.txt
-python scripts/train_ppo.py
+python scripts/train_ppo.py --run-id nuovo_esperimento --workers 4
 ```
 
-Per usare un percorso M15 diverso:
+Il comando esegue i tre seed configurati e ripete da zero il primo seed con lo stesso budget. CPU e un thread PyTorch sono i default riproducibili. `--workers 1` esegue i lavori in sequenza. Sono disponibili `--timesteps`, `--train-fraction`, `--m15-path`, `--seeds`, `--eval-freq`, `--checkpoint-freq` e `--device`. `--skip-repeat` è solo diagnostico: non certifica il completamento.
+
+Ogni esperimento ha una directory identificata dal `run-id`, generato automaticamente se omesso; un identificativo già esistente viene rifiutato per evitare sovrascritture e log misti:
+
+- `models/prototype/<run_id>/<seed>/`: modelli finali e best; il manifest con scaler è nella directory superiore dell'esperimento.
+- `logs/prototype/<run_id>/<seed>/`: metriche CSV/TensorBoard, azioni, checkpoint e valutazioni periodiche.
+- `reports/ppo_prototype/<run_id>/`: manifest, riepilogo e risultati dettagliati.
+
+Il manifest salva configurazione effettiva, hash dei dati M15 e dei sorgenti, commit/stato Git, versioni, confini temporali e statistiche di normalizzazione. Per utilizzare un modello conservare il manifest insieme ai pesi. I risultati precedenti senza run-id restano separati.
+
+`scripts/train_ppo.py` gestisce l'esperimento; `src/gold_rl/rl/callbacks.py` registra azioni e checkpoint. `src/gold_rl/rl/persistence.py` salva archivi leggibili dal normale `stable_baselines3.PPO.load`, evitando il problema di lettura dei tensori annidati osservato su Windows. `load_ppo` nello stesso modulo legge anche gli archivi precedenti senza modificarli.
+
+### Monitoraggio e confronto
+
+Sono registrati policy gradient loss, value loss, entropy loss, reward degli episodi e distribuzione short/flat/long. Entropy loss è il negativo dell'entropia. Il budget effettivo può superare quello nominale per completare un rollout.
+
+La stessa policy finale viene ricaricata e valutata deterministicamente su training e validation in finestre di 5.000 passi con reset del portafoglio e stessi costi. Il report mostra reward per passo, rendimento composto medio, dispersione e coda esclusa. Queste misure sostituiscono il confronto improprio tra reward totali su durate diverse. Sono inoltre valutati sull'intera validation i modelli finali e best; il test resta escluso.
+
+Il criterio di completamento richiede almeno tre seed, nessuna azione dominante oltre la soglia configurata (99%), identità di pesi/risultati nella ripetizione e variabilità entro `agent.acceptance`. Le tolleranze sono fissate prima dell'esecuzione: intervallo dei rendimenti medi su finestre al massimo 10 punti percentuali e delle quote di azione al massimo 20 punti percentuali. Sono criteri preliminari di stabilità, non di redditività; se falliscono il report dichiara la fase non conclusa.
+
+### Notebook e verifiche
+
+`pipeline/phase_7_ppo_preliminary_training.ipynb` legge i risultati tramite `RUN_ID`, mostra curve PPO, confronto omogeneo, azioni deterministiche, modelli best ed esito della ripetizione. Non contiene tabelle di risultati inserite manualmente.
+
+Le dipendenze del notebook sono opzionali rispetto al training:
 
 ```bash
-python scripts/train_ppo.py --m15-path /percorso/al/tuo/xauusd_m15.parquet
+pip install -r requirements-notebook.txt
+python -m pytest -q
 ```
 
-Il training usa i seed configurati in `config.yaml` e produce un run separato per seed.
-
-### Monitoraggio
-
-Stable-Baselines3 scrive nei log CSV/TensorBoard le metriche PPO, incluse:
-
-- `train/policy_gradient_loss`
-- `train/value_loss`
-- `train/entropy_loss`
-- `rollout/ep_rew_mean`
-- `eval/mean_reward`
-
-La diagnostica aggiuntiva salva la distribuzione delle azioni short/flat/long e i reward degli episodi di training. Al termine viene eseguita anche una valutazione deterministica sul segmento validation.
-
-La soglia di degenerazione preliminare è il **99%** sulla singola azione dominante. Il test set resta escluso dalla Fase 7.
-
-Per TensorBoard:
-
-```bash
-tensorboard --logdir logs/prototype
-```
-
+Per TensorBoard: `tensorboard --logdir logs/prototype/<run_id>`.

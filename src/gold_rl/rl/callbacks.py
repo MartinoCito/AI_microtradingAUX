@@ -11,9 +11,10 @@ from stable_baselines3.common.callbacks import BaseCallback, CallbackList, Check
 class PPOTrainingMetricsCallback(BaseCallback):
     """Persist training action/reward diagnostics without changing the environment."""
 
-    def __init__(self, output_path: str | Path, verbose: int = 0) -> None:
+    def __init__(self, output_path: str | Path, verbose: int = 0, degeneracy_threshold: float = 0.99) -> None:
         super().__init__(verbose)
         self.output_path = Path(output_path)
+        self.degeneracy_threshold = degeneracy_threshold
         self.action_counts = np.zeros(3, dtype=np.int64)
         self.episode_rewards: list[float] = []
 
@@ -55,7 +56,7 @@ class PPOTrainingMetricsCallback(BaseCallback):
                 "flat": distribution[1],
                 "long": distribution[2],
             },
-            "degenerate": bool(max(distribution, default=0.0) >= 0.99),
+            "degenerate": bool(max(distribution, default=0.0) >= self.degeneracy_threshold),
             "training_episode_rewards": {
                 "count": len(self.episode_rewards),
                 "mean": float(np.mean(self.episode_rewards))
@@ -77,6 +78,7 @@ def build_ppo_callbacks(
     output_dir: str | Path,
     checkpoint_freq: int,
     eval_callback: Any,
+    degeneracy_threshold: float = 0.99,
 ) -> CallbackList:
     """Build the checkpoint + diagnostic callback stack used by PPO."""
     output_dir = Path(output_dir)
@@ -92,5 +94,6 @@ def build_ppo_callbacks(
     )
     metrics_callback = PPOTrainingMetricsCallback(
         output_path=output_dir / "training_action_metrics.json",
+        degeneracy_threshold=degeneracy_threshold,
     )
     return CallbackList([metrics_callback, checkpoint_callback, eval_callback])

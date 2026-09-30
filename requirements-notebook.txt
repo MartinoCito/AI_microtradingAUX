@@ -1,0 +1,6 @@
+-r requirements.txt
+matplotlib>=3.8
+nbformat>=5.10
+nbclient>=0.10
+ipykernel>=6.29
+Jinja2>=3.1
