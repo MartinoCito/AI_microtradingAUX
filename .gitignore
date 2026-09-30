@@ -138,3 +138,8 @@ logs/prototype/*
 !logs/prototype/.gitkeep
 reports/ppo_prototype/*
 !reports/ppo_prototype/.gitkeep
+
+# Walk-forward generated artifacts
+models/walk_forward/
+logs/walk_forward/
+reports/walk_forward/

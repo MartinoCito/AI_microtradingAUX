@@ -105,3 +105,16 @@ resampling:
   source_bar_duration: "1min"
   min_coverage_ratio: 1.0
   broker_timestamp_convention: "open"
+
+walk_forward:
+  phase7_report: reports/ppo_prototype/phase7_corrected_20260929/summary.json
+  n_folds: 4
+  train_years: 5
+  validation_months: 6
+  test_months: 6
+  total_timesteps: 250000
+  eval_freq: 25000
+  checkpoint_freq: 25000
+  seed: 42
+  max_positive_pnl_share: 0.50
+  min_positive_fold_fraction: 0.50

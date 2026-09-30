@@ -329,3 +329,38 @@ python -m pytest -q
 ```
 
 Per TensorBoard: `tensorboard --logdir logs/prototype/<run_id>`.
+
+## Fase 8 — Walk-forward validation
+
+```bash
+python scripts/train_walk_forward.py --run-id nuovo_walk_forward --workers 4
+```
+
+Il default crea **4 fold mobili**: 5 anni di training, 6 mesi di validation e 6 mesi successivi di test OOS. Le finestre di test sono consecutive e non sovrapposte e terminano prima del holdout finale, che resta escluso. La frontiera del holdout coincide con lo split M15 della Fase 7. `--folds` ammette 3–5 fold, `--timesteps` cambia il budget per modello; i parametri temporali sono in `walk_forward` nel file di configurazione.
+
+Ogni modello parte da zero con lo stesso seed predefinito 42 e budget nominale di 250.000 passi. Lo scaler è stimato solo sul training di quel fold. Il modello scelto massimizza il rendimento composto della validation dopo i costi di liquidazione; in caso di parità si conserva il primo candidato. Viene valutato anche il modello dopo l'ultimo aggiornamento PPO. Le finestre OOS non sono passate al callback di selezione.
+
+La fase produce:
+
+- `reports/walk_forward_metrics.csv`: metriche per fold e aggregate per PPO e cinque baseline.
+- `reports/walk_forward_equity.csv`: equity e rendimenti per timestamp, fold e strategia, in formato lungo.
+- `reports/figures/walk_forward.png`: equity OOS e contributi al PnL dei fold.
+- `reports/walk_forward/<run_id>/`: copia dei report, manifest, snapshot dei sorgenti e criterio di completamento.
+- `models/walk_forward/<run_id>/fold_<n>/`: modello finale, checkpoint selezionato e punteggi di validation.
+- `logs/walk_forward/<run_id>/fold_<n>/`: metriche PPO, checkpoint periodici e azioni di training.
+
+Gli artefatti di un esperimento esistente non vengono sovrascritti. I tre report principali sono aggiornati solo dopo il completamento del nuovo esperimento e del grafico. `--plot-python` permette di indicare un altro interprete con pandas e matplotlib; normalmente non serve se sono installate le dipendenze di `requirements.txt`.
+
+### Causalità, baseline e continuità dell'equity
+
+Si confrontano PPO, always_flat, always_long, random, momentum a un passo ed EMA 12/26. I segnali delle baseline sono quelli della Fase 5, ricalcolati sui prezzi M15 con storia passata, senza tuning sul test. Per tutte le strategie la decisione usa la barra precedente e viene eseguita sul close successivo con il medesimo motore di execution/portfolio. L'osservazione immediatamente precedente a ogni finestra serve solo da contesto e non compare tra le righe OOS valutate.
+
+Le posizioni vengono liquidate all'ultimo close del fold, pagando i costi del motore. Il saldo finale finanzia il fold seguente. Non si riportano le equity a 100.000 e non si moltiplicano curve costruite con capitali indipendenti: il portafoglio usa quantità fisse di una unità e lo stato osservato dalla policy dipende dal capitale effettivo. La concatenazione controlla timestamp univoci e rendimenti coerenti anche ai confini. Lo Sharpe riportato è per barra, senza riutilizzare impropriamente l'annualizzazione M1 della Fase 5.
+
+### Dipendenza dai fold e limiti
+
+Il criterio preliminare richiede PnL OOS totale positivo, almeno metà dei fold positivi, nessun fold con più del 50% della somma dei PnL positivi e contributo totale ancora positivo togliendo ciascun fold. Le soglie sono registrate prima del training. L'esclusione di un fold è un'analisi di attribuzione sui trade osservati, non una nuova simulazione controfattuale della policy con un capitale diverso. Se PPO perde complessivamente, il report dichiara `non_positive_oos`: non viene presentato come un risultato positivo robusto.
+
+Questo studio non risolve né nasconde la variabilità multi-seed emersa in Fase 7: usa un seed fisso per isolare la variabilità temporale. Inoltre alcuni periodi sono già stati osservati nella ricerca precedente. Si tratta quindi di una verifica walk-forward retrospettiva, distinta dal holdout finale escluso da questa fase. Le finestre già trascorse possono entrare nella storia di training dei fold successivi, come avverrebbe riaddestrando nel tempo.
+
+Il disegno riprende l'idea di finestre OOS concatenate descritta nel [repository di riferimento](https://github.com/ZiadFrancis/Reinforcement_Trading_Part_2/blob/main/README.md), adattata al motore e all'azione discreta di questo progetto. Non ne copia il sistema di bracket/stop-loss/take-profit.
